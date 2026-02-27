@@ -1,0 +1,182 @@
+# Network Device Monitoring Lab - Datadog Integration
+# Simulates: Cisco Router | Palo Alto Firewall | F5 Load Balancer | Jump Host | Backend
+# Requires: DD_API_KEY, DD_SITE (see .env.example)
+
+services:
+  # --- Cisco Router (SNMP + Traps + Syslog + NetFlow exporter) ---
+  cisco-router:
+    image: python:3.12-alpine
+    hostname: cisco-router
+    networks:
+      lab: { ipv4_address: 10.0.0.2 }
+    environment:
+      - DATADOG_AGENT_HOST=datadog-agent
+      - SYSLOG_PORT=514
+      - TRAP_PORT=9162
+      - DEVICE_NAME=cisco-router
+      - NEXT_HOP=10.0.0.3
+    volumes:
+      - ./snmp_data/cisco/snmpd.conf:/etc/snmp/snmpd.conf:ro
+      - ./trap-sender:/opt/trap-sender:ro
+      - ./syslog-generator:/opt/syslog-generator:ro
+      - ./traffic-generator:/opt/traffic-generator:ro
+    ports:
+      - "1611:161/udp"  # SNMP (mapped to avoid host conflict)
+    command: >
+      sh -c "apk add --no-cache net-snmp net-snmp-tools &&
+      snmpd -f -Lo &
+      sh /opt/trap-sender/send_traps.sh &
+      sh /opt/traffic-generator/device_traffic.sh &
+      python3 /opt/syslog-generator/send_syslog_cisco.py"
+    healthcheck:
+      test: ["CMD", "snmpget", "-v2c", "-c", "public", "127.0.0.1", "sysDescr.0"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # --- NetFlow Exporter (simulates Cisco router exporting flows) ---
+  netflow-exporter:
+    build: ./netflow-exporter
+    hostname: netflow-exporter
+    networks:
+      lab: { ipv4_address: 10.0.0.6 }
+    environment:
+      - DATADOG_AGENT_HOST=datadog-agent
+      - NETFLOW_PORT=2056
+      - EXPORTER_IP=10.0.0.2
+    depends_on:
+      - datadog-agent
+
+  # --- Palo Alto Firewall (SNMP + Syslog) ---
+  paloalto-firewall:
+    image: python:3.12-alpine
+    hostname: paloalto-firewall
+    networks:
+      lab: { ipv4_address: 10.0.0.3 }
+    environment:
+      - DATADOG_AGENT_HOST=datadog-agent
+      - SYSLOG_PORT=514
+      - TRAP_PORT=9162
+      - DEVICE_NAME=paloalto-firewall
+      - NEXT_HOP=10.0.0.4
+    volumes:
+      - ./snmp_data/paloalto/snmpd.conf:/etc/snmp/snmpd.conf:ro
+      - ./syslog-generator:/opt/syslog-generator:ro
+      - ./trap-sender:/opt/trap-sender:ro
+      - ./traffic-generator:/opt/traffic-generator:ro
+    ports:
+      - "1612:161/udp"
+    command: >
+      sh -c "apk add --no-cache net-snmp net-snmp-tools &&
+      snmpd -f -Lo &
+      sh /opt/trap-sender/send_traps.sh &
+      sh /opt/traffic-generator/device_traffic.sh &
+      python3 /opt/syslog-generator/send_syslog.py"
+    healthcheck:
+      test: ["CMD", "snmpget", "-v2c", "-c", "public", "127.0.0.1", "sysDescr.0"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # --- F5 Load Balancer (SNMP + Traps + Syslog) ---
+  f5-loadbalancer:
+    image: python:3.12-alpine
+    hostname: f5-loadbalancer
+    networks:
+      lab: { ipv4_address: 10.0.0.4 }
+    environment:
+      - DATADOG_AGENT_HOST=datadog-agent
+      - SYSLOG_PORT=514
+      - TRAP_PORT=9162
+      - DEVICE_NAME=f5-loadbalancer
+      - NEXT_HOP=10.0.0.5
+    volumes:
+      - ./snmp_data/f5/snmpd.conf:/etc/snmp/snmpd.conf:ro
+      - ./trap-sender:/opt/trap-sender:ro
+      - ./syslog-generator:/opt/syslog-generator:ro
+      - ./traffic-generator:/opt/traffic-generator:ro
+    ports:
+      - "1613:161/udp"
+    command: >
+      sh -c "apk add --no-cache net-snmp net-snmp-tools &&
+      snmpd -f -Lo &
+      sh /opt/trap-sender/send_traps.sh &
+      sh /opt/traffic-generator/device_traffic.sh &
+      python3 /opt/syslog-generator/send_syslog_f5.py"
+    healthcheck:
+      test: ["CMD", "snmpget", "-v2c", "-c", "public", "127.0.0.1", "sysDescr.0"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # --- Linux Jump Host (traffic generator) ---
+  jump-host:
+    image: python:3.12-alpine
+    hostname: jump-host
+    networks:
+      lab: { ipv4_address: 10.0.0.10 }
+    volumes:
+      - ./traffic-generator:/opt/traffic-generator:ro
+    command: >
+      sh -c "apk add --no-cache curl &&
+      python3 /opt/traffic-generator/generate_traffic.py"
+    depends_on:
+      - backend
+
+  # --- Backend Service ---
+  backend:
+    image: python:3.12-alpine
+    hostname: backend
+    networks:
+      lab: { ipv4_address: 10.0.0.5 }
+    volumes:
+      - ./backend:/app:ro
+    working_dir: /app
+    command: python -m http.server 8080
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/"]
+      interval: 5s
+      timeout: 3s
+      retries: 2
+
+  # --- Datadog Agent (SNMP, NetFlow, Syslog) ---
+  datadog-agent:
+    image: gcr.io/datadoghq/agent:7
+    hostname: datadog-agent
+    networks:
+      lab: { ipv4_address: 10.0.0.100 }
+    environment:
+      - DD_API_KEY=${DD_API_KEY}
+      - DD_SITE=${DD_SITE:-datadoghq.com}
+      - DD_APM_ENABLED=false
+      - DD_PROCESS_AGENT_ENABLED=false
+      - DD_LOGS_ENABLED=true
+      - DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL=false
+    volumes:
+      - ./datadog/datadog.yaml:/etc/datadog-agent/datadog.yaml:ro
+      - ./datadog/conf.d/snmp.d:/etc/datadog-agent/conf.d/snmp.d:ro
+      - ./datadog/conf.d/syslog.d:/etc/datadog-agent/conf.d/syslog.d:ro
+    ports:
+      - "8125:8125/udp"
+      - "8126:8126/tcp"
+      - "2055:2055/udp"
+      - "2056:2056/udp"
+      - "514:514/udp"
+      - "9162:9162/udp"
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_PTRACE
+    # Start agent early so it's listening when devices send traps/syslogs
+    depends_on:
+      - cisco-router
+      - paloalto-firewall
+      - f5-loadbalancer
+
+networks:
+  lab:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.0.0/24
+          gateway: 10.0.0.1

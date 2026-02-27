@@ -1,0 +1,8 @@
+# Syslog listener - receives logs from Cisco, Palo Alto, F5
+# Use source:syslog and syslog_ip tag for NDM device correlation
+
+logs:
+  - type: udp
+    port: 514
+    source: syslog
+    service: network-devices

@@ -1,0 +1,26 @@
+# SNMP integration - Individual devices (Cisco, Palo Alto, F5)
+# Devices are polled by IP; Datadog matches sysObjectID to device profiles
+
+init_config:
+  loader: core
+  use_device_id_as_hostname: true
+
+instances:
+  - ip_address: "10.0.0.2"
+    community_string: "public"
+    tags:
+      - "device_type:cisco"
+      - "device_vendor:cisco"
+      - "role:router"
+  - ip_address: "10.0.0.3"
+    community_string: "public"
+    tags:
+      - "device_type:paloalto"
+      - "device_vendor:paloalto"
+      - "role:firewall"
+  - ip_address: "10.0.0.4"
+    community_string: "public"
+    tags:
+      - "device_type:f5"
+      - "device_vendor:f5"
+      - "role:load_balancer"
