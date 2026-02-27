@@ -41,9 +41,22 @@ def main():
         (FIREWALL_HOST, "firewall"),
         (LB_HOST, "loadbalancer"),
     ]
-    print(f"Generating traffic to: {[t[1] for t in targets]}")
-    print("Waiting 30s for network to be ready...")
-    time.sleep(30)
+    print(f"Generating traffic to: {[t[1] for t in targets]}", flush=True)
+    print("Waiting for backend to be reachable...", flush=True)
+    for _ in range(30):
+        try:
+            subprocess.run(
+                ["curl", "-s", "-o", "/dev/null", "-m", "2", f"http://{BACKEND_HOST}:8080/"],
+                timeout=3,
+                capture_output=True,
+            )
+            print("Backend ready.", flush=True)
+            break
+        except Exception:
+            pass
+        time.sleep(2)
+    else:
+        print("Warning: backend not reachable after 60s, continuing anyway.", flush=True)
     count = 0
     while True:
         try:
@@ -55,7 +68,7 @@ def main():
                     icmp_traffic(host)
             count += 1
             if count % 5 == 0:
-                print(f"Traffic cycle {count} complete")
+                print(f"Traffic cycle {count} complete", flush=True)
         except Exception as e:
             print(f"Error: {e}")
         time.sleep(INTERVAL)

@@ -16,9 +16,11 @@
 
 | Device | sysObjectID | Datadog Profile |
 |--------|-------------|-----------------|
-| Cisco Router | 1.3.6.1.4.1.9.1.516 | Cisco (generic) |
-| Palo Alto Firewall | 1.3.6.1.4.1.25461.2.1.2.1 | Palo Alto PAN-OS |
-| F5 Load Balancer | 1.3.6.1.4.1.3375.2.1.1 | F5 BIG-IP |
+| Cisco Router | 1.3.6.1.4.1.99999.1.1 | generic-device |
+| Palo Alto Firewall | 1.3.6.1.4.1.99999.1.2 | generic-device |
+| F5 Load Balancer | 1.3.6.1.4.1.99999.1.3 | generic-device |
+
+Note: We use generic profile (1.3.6.1.4.*) because vendor profiles require OIDs that net-snmp doesn't provide.
 
 ## Test SNMP locally
 

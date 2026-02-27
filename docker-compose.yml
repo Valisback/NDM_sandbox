@@ -113,13 +113,15 @@ services:
   jump-host:
     image: python:3.12-alpine
     hostname: jump-host
+    environment:
+      - PYTHONUNBUFFERED=1
     networks:
       lab: { ipv4_address: 10.0.0.10 }
     volumes:
       - ./traffic-generator:/opt/traffic-generator:ro
     command: >
       sh -c "apk add --no-cache curl &&
-      python3 /opt/traffic-generator/generate_traffic.py"
+      python3 -u /opt/traffic-generator/generate_traffic.py"
     depends_on:
       - backend
 
